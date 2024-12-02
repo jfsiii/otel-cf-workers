@@ -91,4 +91,10 @@ export interface DOConstructorTrigger {
 	name?: string
 }
 
-export type Trigger = Request | MessageBatch | ScheduledController | DOConstructorTrigger | 'do-alarm'
+export type Trigger =
+	| Request
+	| MessageBatch
+	| ScheduledController
+	| DOConstructorTrigger
+	| 'do-alarm'
+	| ForwardableEmailMessage

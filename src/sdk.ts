@@ -16,10 +16,12 @@ import { instrumentEnv } from './instrumentation/env.js'
 import { versionAttributes } from './instrumentation/version.js'
 import { WorkerTracer } from './tracer.js'
 import { PromiseTracker, proxyExecutionContext } from './instrumentation/common.js'
+import { createEmailHandler } from './instrumentation/email.js'
 
 type FetchHandler = ExportedHandlerFetchHandler<unknown, unknown>
 type ScheduledHandler = ExportedHandlerScheduledHandler<unknown>
 type QueueHandler = ExportedHandlerQueueHandler
+type EmailHandler = EmailExportedHandler
 
 type Env = Record<string, any>
 type HandlerFn<T extends Trigger, E extends Env, R extends any> = (
@@ -197,6 +199,12 @@ export function instrument<E extends Env, Q, C>(
 		const queuer = unwrap(handler.queue) as QueueHandler
 		handler.queue = createHandlerProxy(handler, queuer, initialiser, new QueueInstrumentation())
 	}
+
+	if (handler.email) {
+		const emailer = unwrap(handler.email) as EmailHandler
+		handler.email = createEmailHandler(emailer, initialiser)
+	}
+
 	return handler
 }
 
