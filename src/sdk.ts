@@ -13,6 +13,7 @@ import { createScheduledHandler } from './instrumentation/scheduled.js'
 //@ts-ignore
 import * as versions from '../versions.json'
 import { createEmailHandler } from './instrumentation/email.js'
+import { createPageHandler } from './instrumentation/page.js'
 
 type FetchHandler = ExportedHandlerFetchHandler<unknown, unknown>
 type ScheduledHandler = ExportedHandlerScheduledHandler<unknown>
