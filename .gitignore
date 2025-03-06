@@ -81,7 +81,8 @@ typings/
 
 # Nuxt.js build / generate output
 .nuxt
-dist
+# allow dist to be committed so we can install/use via GitHub
+# dist
 
 # Gatsby files
 .cache/
