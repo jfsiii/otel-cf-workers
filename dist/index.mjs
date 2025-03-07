@@ -371,7 +371,7 @@ function isSpanExporter(exporterConfig) {
 function isSampler(sampler) {
   return !!sampler.shouldSample;
 }
-function parseConfig(supplied) {
+function parseConfig2(supplied) {
   if (isSpanProcessorConfig(supplied)) {
     const headSampleConf = supplied.sampling?.headSampler;
     const headSampler = headSampleConf ? isSampler(headSampleConf) ? headSampleConf : createSampler(headSampleConf) : new AlwaysOnSampler();
@@ -407,7 +407,7 @@ function parseConfig(supplied) {
     const exporter = isSpanExporter(supplied.exporter) ? supplied.exporter : new OTLPExporter(supplied.exporter);
     const spanProcessors = [new BatchTraceSpanProcessor(exporter)];
     const newConfig = Object.assign(supplied, { exporter: void 0, spanProcessors });
-    return parseConfig(newConfig);
+    return parseConfig2(newConfig);
   }
 }
 
@@ -662,16 +662,16 @@ var SpanImpl = class {
   _droppedAttributesCount = 0;
   _droppedEventsCount = 0;
   _droppedLinksCount = 0;
-  constructor(init2) {
-    this.name = init2.name;
-    this._spanContext = init2.spanContext;
-    this.parentSpanId = init2.parentSpanId;
-    this.kind = init2.spanKind || SpanKind.INTERNAL;
-    this.attributes = sanitizeAttributes(init2.attributes);
-    this.startTime = getHrTime(init2.startTime);
-    this.links = init2.links || [];
-    this.resource = init2.resource;
-    this.onEnd = init2.onEnd;
+  constructor(init3) {
+    this.name = init3.name;
+    this._spanContext = init3.spanContext;
+    this.parentSpanId = init3.parentSpanId;
+    this.kind = init3.spanKind || SpanKind.INTERNAL;
+    this.attributes = sanitizeAttributes(init3.attributes);
+    this.startTime = getHrTime(init3.startTime);
+    this.links = init3.links || [];
+    this.resource = init3.resource;
+    this.onEnd = init3.onEnd;
   }
   addLink(link) {
     this.links.push(link);
@@ -840,11 +840,11 @@ var WorkerTracerProvider = class {
 
 // src/instrumentation/fetch.ts
 import {
-  trace as trace11,
-  SpanKind as SpanKind9,
+  trace as trace12,
+  SpanKind as SpanKind10,
   propagation,
-  context as api_context4,
-  SpanStatusCode as SpanStatusCode5
+  context as api_context5,
+  SpanStatusCode as SpanStatusCode6
 } from "@opentelemetry/api";
 
 // src/instrumentation/do.ts
@@ -1620,27 +1620,216 @@ function instrumentQueueSender(queue, name) {
   return wrap(queue, queueHandler);
 }
 
-// src/instrumentation/service.ts
-function instrumentServiceBinding(fetcher, envName) {
-  const fetcherHandler = {
-    get(target, prop) {
-      if (prop === "fetch") {
-        const fetcher2 = Reflect.get(target, prop);
-        const attrs = {
-          name: `Service Binding ${envName}`
-        };
-        return instrumentClientFetch(fetcher2, () => ({ includeTraceContext: true }), attrs);
-      } else {
-        return passthroughGet(target, prop);
+// src/instrumentation/rpc.ts
+import { context as api_context4, trace as trace9, SpanKind as SpanKind7, SpanStatusCode as SpanStatusCode4 } from "@opentelemetry/api";
+import { SemanticAttributes as SemanticAttributes6 } from "@opentelemetry/semantic-conventions";
+function instrumentRpcClass(rpcClass, initialiser) {
+  const classHandler = {
+    construct(target, args) {
+      const instance = new target(...args);
+      return instrumentRpcInstance(instance, initialiser);
+    }
+  };
+  return wrap(rpcClass, classHandler);
+}
+function instrumentRpcInstance(instance, initialiser) {
+  const instanceHandler = {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (prop === "constructor") {
+        return value;
+      }
+      if (typeof value === "function" && prop !== "fetch" && // fetch is already handled by the fetch instrumentation
+      prop !== Symbol.dispose && prop !== Symbol.asyncDispose) {
+        return instrumentRpcMethod(value, String(prop), initialiser, target);
+      }
+      return value;
+    }
+  };
+  return wrap(instance, instanceHandler);
+}
+function instrumentRpcMethod(method, methodName, initialiser, instance) {
+  const methodHandler = {
+    apply: async function(target, thisArg, args) {
+      const env = instance && instance.env ? instrumentEnv(instance.env) : {};
+      const config = initialiser(env, {
+        method: methodName,
+        args
+      });
+      const context3 = setConfig(config);
+      try {
+        return await api_context4.with(context3, executeRpcMethod, void 0, target, thisArg, args, methodName);
+      } catch (error) {
+        throw error;
+      } finally {
+        await exportSpans();
       }
     }
   };
-  return wrap(fetcher, fetcherHandler);
+  return wrap(method, methodHandler);
+}
+async function executeRpcMethod(method, thisArg, args, methodName) {
+  const tracer2 = trace9.getTracer("rpc");
+  const attributes = {
+    [SemanticAttributes6.RPC_SYSTEM]: "cloudflare_workers",
+    [SemanticAttributes6.RPC_SERVICE]: thisArg.constructor.name,
+    [SemanticAttributes6.RPC_METHOD]: methodName,
+    "rpc.arguments_count": args.length
+  };
+  const options = {
+    attributes,
+    kind: SpanKind7.SERVER
+  };
+  return tracer2.startActiveSpan(`RPC ${methodName}`, options, async (span) => {
+    try {
+      const result = await Reflect.apply(method, unwrap(thisArg), args);
+      span.setAttribute("rpc.success", true);
+      span.setAttribute("rpc.has_result", result !== void 0 && result !== null);
+      span.end();
+      return result;
+    } catch (error) {
+      span.recordException(error);
+      span.setAttribute("rpc.success", false);
+      span.setStatus({ code: SpanStatusCode4.ERROR });
+      span.end();
+      throw error;
+    }
+  });
+}
+function instrumentRpcTarget(targetClass, initialiser) {
+  const classHandler = {
+    construct(target, args) {
+      const instance = new target(...args);
+      return instrumentRpcTargetInstance(instance, initialiser);
+    }
+  };
+  return wrap(targetClass, classHandler);
+}
+function instrumentRpcTargetInstance(instance, initialiser) {
+  const instanceHandler = {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (prop === "constructor" || prop === Symbol.dispose || prop === Symbol.asyncDispose || typeof value !== "function") {
+        return value;
+      }
+      return instrumentRpcTargetMethod(value, String(prop), initialiser, target);
+    }
+  };
+  return wrap(instance, instanceHandler);
+}
+function instrumentRpcTargetMethod(method, methodName, initialiser, instance) {
+  const methodHandler = {
+    apply: async function(target, thisArg, args) {
+      const env = {};
+      const config = initialiser(env, {
+        method: methodName,
+        args
+      });
+      const context3 = setConfig(config);
+      try {
+        return await api_context4.with(context3, executeRpcTargetMethod, void 0, target, thisArg, args, methodName);
+      } catch (error) {
+        throw error;
+      }
+    }
+  };
+  return wrap(method, methodHandler);
+}
+async function executeRpcTargetMethod(method, thisArg, args, methodName) {
+  const tracer2 = trace9.getTracer("rpc-target");
+  const attributes = {
+    "rpc.target.class": thisArg.constructor.name,
+    "rpc.target.method": methodName,
+    "rpc.target.arguments_count": args.length
+  };
+  const options = {
+    attributes,
+    kind: SpanKind7.INTERNAL
+  };
+  return tracer2.startActiveSpan(`RpcTarget ${methodName}`, options, async (span) => {
+    try {
+      const result = await Reflect.apply(method, unwrap(thisArg), args);
+      span.setAttribute("rpc.target.success", true);
+      span.end();
+      return result;
+    } catch (error) {
+      span.recordException(error);
+      span.setAttribute("rpc.target.success", false);
+      span.setStatus({ code: SpanStatusCode4.ERROR });
+      span.end();
+      throw error;
+    }
+  });
+}
+function instrumentRpcBinding(service, bindingName) {
+  if (!isRpcStub(service)) {
+    return service;
+  }
+  const bindingHandler = {
+    get(target, prop, receiver) {
+      if (typeof prop === "string" && prop !== "fetch" && prop !== "then") {
+        const method = Reflect.get(target, prop, receiver);
+        if (typeof method === "function") {
+          return instrumentRpcBindingMethod(method, bindingName, String(prop));
+        }
+      }
+      return passthroughGet(target, prop, receiver);
+    }
+  };
+  return wrap(service, bindingHandler);
+}
+function instrumentRpcBindingMethod(method, bindingName, methodName) {
+  const methodHandler = {
+    apply: async function(target, thisArg, args) {
+      const tracer2 = trace9.getTracer("rpc-client");
+      const attributes = {
+        "rpc.client.binding": bindingName,
+        "rpc.client.method": methodName,
+        "rpc.client.arguments_count": args.length
+      };
+      const options = {
+        attributes,
+        kind: SpanKind7.CLIENT
+      };
+      return tracer2.startActiveSpan(`RPC ${bindingName}.${methodName}`, options, async (span) => {
+        try {
+          const result = await Reflect.apply(target, unwrap(thisArg), args);
+          span.setAttribute("rpc.client.success", true);
+          span.end();
+          return result;
+        } catch (error) {
+          span.recordException(error);
+          span.setAttribute("rpc.client.success", false);
+          span.setStatus({ code: SpanStatusCode4.ERROR });
+          span.end();
+          throw error;
+        }
+      });
+    }
+  };
+  return wrap(method, methodHandler);
+}
+function isRpcStub(obj) {
+  if (!isProxyable(obj)) {
+    return false;
+  }
+  try {
+    const props = Object.getOwnPropertyNames(Object.getPrototypeOf(obj) || {});
+    const commonMethods = ["constructor", "then", "toString", "valueOf"];
+    if (props.length <= commonMethods.length && props.every((p) => commonMethods.includes(p))) {
+      return true;
+    }
+    const testProp = `__test_rpc_${Math.random()}`;
+    const testMethod = obj[testProp];
+    return typeof testMethod === "function";
+  } catch (e) {
+    return false;
+  }
 }
 
 // src/instrumentation/d1.ts
-import { SpanKind as SpanKind7, SpanStatusCode as SpanStatusCode4, trace as trace9 } from "@opentelemetry/api";
-import { SemanticAttributes as SemanticAttributes6 } from "@opentelemetry/semantic-conventions";
+import { SpanKind as SpanKind8, SpanStatusCode as SpanStatusCode5, trace as trace10 } from "@opentelemetry/api";
+import { SemanticAttributes as SemanticAttributes7 } from "@opentelemetry/semantic-conventions";
 var dbSystem3 = "Cloudflare D1";
 function metaAttributes(meta) {
   return {
@@ -1656,20 +1845,20 @@ function metaAttributes(meta) {
 function spanOptions(dbName, operation, sql) {
   const attributes = {
     binding_type: "D1",
-    [SemanticAttributes6.DB_NAME]: dbName,
-    [SemanticAttributes6.DB_SYSTEM]: dbSystem3,
-    [SemanticAttributes6.DB_OPERATION]: operation
+    [SemanticAttributes7.DB_NAME]: dbName,
+    [SemanticAttributes7.DB_SYSTEM]: dbSystem3,
+    [SemanticAttributes7.DB_OPERATION]: operation
   };
   if (sql) {
-    attributes[SemanticAttributes6.DB_STATEMENT] = sql;
+    attributes[SemanticAttributes7.DB_STATEMENT] = sql;
   }
   return {
-    kind: SpanKind7.CLIENT,
+    kind: SpanKind8.CLIENT,
     attributes
   };
 }
 function instrumentD1StatementFn(fn, dbName, operation, sql) {
-  const tracer2 = trace9.getTracer("D1");
+  const tracer2 = trace10.getTracer("D1");
   const fnHandler = {
     apply: (target, thisArg, argArray) => {
       if (operation === "bind") {
@@ -1683,11 +1872,11 @@ function instrumentD1StatementFn(fn, dbName, operation, sql) {
           if (operation === "all" || operation === "run") {
             span.setAttributes(metaAttributes(result.meta));
           }
-          span.setStatus({ code: SpanStatusCode4.OK });
+          span.setStatus({ code: SpanStatusCode5.OK });
           return result;
         } catch (error) {
           span.recordException(error);
-          span.setStatus({ code: SpanStatusCode4.ERROR });
+          span.setStatus({ code: SpanStatusCode5.ERROR });
           throw error;
         } finally {
           span.end();
@@ -1711,7 +1900,7 @@ function instrumentD1PreparedStatement(stmt, dbName, statement) {
   return wrap(stmt, statementHandler);
 }
 function instrumentD1Fn(fn, dbName, operation) {
-  const tracer2 = trace9.getTracer("D1");
+  const tracer2 = trace10.getTracer("D1");
   const fnHandler = {
     apply: (target, thisArg, argArray) => {
       if (operation === "prepare") {
@@ -1724,11 +1913,11 @@ function instrumentD1Fn(fn, dbName, operation) {
         return tracer2.startActiveSpan(`${dbName} ${operation}`, options, async (span) => {
           try {
             const result = await Reflect.apply(target, thisArg, argArray);
-            span.setStatus({ code: SpanStatusCode4.OK });
+            span.setStatus({ code: SpanStatusCode5.OK });
             return result;
           } catch (error) {
             span.recordException(error);
-            span.setStatus({ code: SpanStatusCode4.ERROR });
+            span.setStatus({ code: SpanStatusCode5.ERROR });
             throw error;
           } finally {
             span.end();
@@ -1743,11 +1932,11 @@ function instrumentD1Fn(fn, dbName, operation) {
           try {
             const result = await Reflect.apply(target, thisArg, argArray);
             result.forEach((r, i) => subSpans[i]?.setAttributes(metaAttributes(r.meta)));
-            span.setStatus({ code: SpanStatusCode4.OK });
+            span.setStatus({ code: SpanStatusCode5.OK });
             return result;
           } catch (error) {
             span.recordException(error);
-            span.setStatus({ code: SpanStatusCode4.ERROR });
+            span.setStatus({ code: SpanStatusCode5.ERROR });
             throw error;
           } finally {
             subSpans.forEach((s) => s.end());
@@ -1776,8 +1965,8 @@ function instrumentD1(database, dbName) {
 }
 
 // src/instrumentation/analytics-engine.ts
-import { SpanKind as SpanKind8, trace as trace10 } from "@opentelemetry/api";
-import { SemanticAttributes as SemanticAttributes7 } from "@opentelemetry/semantic-conventions";
+import { SpanKind as SpanKind9, trace as trace11 } from "@opentelemetry/api";
+import { SemanticAttributes as SemanticAttributes8 } from "@opentelemetry/semantic-conventions";
 var dbSystem4 = "Cloudflare Analytics Engine";
 var AEAttributes = {
   writeDataPoint(argArray) {
@@ -1793,17 +1982,17 @@ var AEAttributes = {
   }
 };
 function instrumentAEFn(fn, name, operation) {
-  const tracer2 = trace10.getTracer("AnalyticsEngine");
+  const tracer2 = trace11.getTracer("AnalyticsEngine");
   const fnHandler = {
     apply: (target, thisArg, argArray) => {
       const attributes = {
         binding_type: "AnalyticsEngine",
-        [SemanticAttributes7.DB_NAME]: name,
-        [SemanticAttributes7.DB_SYSTEM]: dbSystem4,
-        [SemanticAttributes7.DB_OPERATION]: operation
+        [SemanticAttributes8.DB_NAME]: name,
+        [SemanticAttributes8.DB_SYSTEM]: dbSystem4,
+        [SemanticAttributes8.DB_OPERATION]: operation
       };
       const options = {
-        kind: SpanKind8.CLIENT,
+        kind: SpanKind9.CLIENT,
         attributes
       };
       return tracer2.startActiveSpan(`Analytics Engine ${name} ${operation}`, options, async (span) => {
@@ -1811,7 +2000,7 @@ function instrumentAEFn(fn, name, operation) {
         const extraAttrsFn = AEAttributes[operation];
         const extraAttrs = extraAttrsFn ? extraAttrsFn(argArray, result) : {};
         span.setAttributes(extraAttrs);
-        span.setAttribute(SemanticAttributes7.DB_STATEMENT, `${operation} ${argArray[0]}`);
+        span.setAttribute(SemanticAttributes8.DB_STATEMENT, `${operation} ${argArray[0]}`);
         span.end();
         return result;
       });
@@ -1832,7 +2021,14 @@ function instrumentAnalyticsEngineDataset(dataset, name) {
 
 // src/instrumentation/env.ts
 var isJSRPC = (item) => {
-  return !!item?.["__some_property_that_will_never_exist" + Math.random()];
+  if (!item || typeof item !== "object") return false;
+  try {
+    const testProp = `__test_rpc_${Math.random()}`;
+    const testMethod = item[testProp];
+    return typeof testMethod === "function";
+  } catch (e) {
+    return !!item?.["__some_property_that_will_never_exist" + Math.random()];
+  }
 };
 var isKVNamespace = (item) => {
   return !isJSRPC(item) && !!item?.getWithMetadata;
@@ -1860,7 +2056,7 @@ var instrumentEnv = (env) => {
         return item;
       }
       if (isJSRPC(item)) {
-        return instrumentServiceBinding(item, String(prop));
+        return instrumentRpcBinding(item, String(prop));
       } else if (isKVNamespace(item)) {
         return instrumentKV(item, String(prop));
       } else if (isQueue(item)) {
@@ -1940,7 +2136,7 @@ function gatherIncomingCfAttributes(request) {
   return attrs;
 }
 function getParentContextFromHeaders(headers) {
-  return propagation.extract(api_context4.active(), headers, {
+  return propagation.extract(api_context5.active(), headers, {
     get(headers2, key) {
       return headers2.get(key) || void 0;
     },
@@ -1952,13 +2148,13 @@ function getParentContextFromHeaders(headers) {
 function getParentContextFromRequest(request) {
   const workerConfig = getActiveConfig();
   if (workerConfig === void 0) {
-    return api_context4.active();
+    return api_context5.active();
   }
   const acceptTraceContext = typeof workerConfig.handlers.fetch.acceptTraceContext === "function" ? workerConfig.handlers.fetch.acceptTraceContext(request) : workerConfig.handlers.fetch.acceptTraceContext ?? true;
-  return acceptTraceContext ? getParentContextFromHeaders(request.headers) : api_context4.active();
+  return acceptTraceContext ? getParentContextFromHeaders(request.headers) : api_context5.active();
 }
 function waitUntilTrace(fn) {
-  const tracer2 = trace11.getTracer("waitUntil");
+  const tracer2 = trace12.getTracer("waitUntil");
   return tracer2.startActiveSpan("waitUntil", async (span) => {
     await fn();
     span.end();
@@ -1967,7 +2163,7 @@ function waitUntilTrace(fn) {
 var cold_start2 = true;
 function executeFetchHandler(fetchFn, [request, env, ctx]) {
   const spanContext = getParentContextFromRequest(request);
-  const tracer2 = trace11.getTracer("fetchHandler");
+  const tracer2 = trace12.getTracer("fetchHandler");
   const attributes = {
     ["faas.trigger"]: "http",
     ["faas.coldstart"]: cold_start2,
@@ -1979,7 +2175,7 @@ function executeFetchHandler(fetchFn, [request, env, ctx]) {
   Object.assign(attributes, versionAttributes(env));
   const options = {
     attributes,
-    kind: SpanKind9.SERVER
+    kind: SpanKind10.SERVER
   };
   const method = request.method.toUpperCase();
   const promise = tracer2.startActiveSpan(`fetchHandler ${method}`, options, spanContext, async (span) => {
@@ -1990,7 +2186,7 @@ function executeFetchHandler(fetchFn, [request, env, ctx]) {
       return response;
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: SpanStatusCode5.ERROR });
+      span.setStatus({ code: SpanStatusCode6.ERROR });
       throw error;
     } finally {
       if (readable.attributes["http.route"]) {
@@ -2011,7 +2207,7 @@ function createFetchHandler(fetchFn, initialiser) {
       const context3 = setConfig(config);
       try {
         const args = [request, env, ctx];
-        return await api_context4.with(context3, executeFetchHandler, void 0, target, args);
+        return await api_context5.with(context3, executeFetchHandler, void 0, target, args);
       } catch (error) {
         throw error;
       } finally {
@@ -2033,15 +2229,15 @@ function instrumentClientFetch(fetchFn, configFn, attrs) {
         return Reflect.apply(target, thisArg, [request]);
       }
       const config = configFn(workerConfig);
-      const tracer2 = trace11.getTracer("fetcher");
-      const options = { kind: SpanKind9.CLIENT, attributes: attrs };
+      const tracer2 = trace12.getTracer("fetcher");
+      const options = { kind: SpanKind10.CLIENT, attributes: attrs };
       const host = new URL(request.url).host;
       const method = request.method.toUpperCase();
       const spanName = typeof attrs?.["name"] === "string" ? attrs?.["name"] : `fetch ${method} ${host}`;
       const promise = tracer2.startActiveSpan(spanName, options, async (span) => {
         const includeTraceContext = typeof config.includeTraceContext === "function" ? config.includeTraceContext(request) : config.includeTraceContext;
         if (includeTraceContext ?? true) {
-          propagation.inject(api_context4.active(), request.headers, {
+          propagation.inject(api_context5.active(), request.headers, {
             set: (h, k, v) => h.set(k, typeof v === "string" ? v : String(v))
           });
         }
@@ -2062,8 +2258,8 @@ function instrumentGlobalFetch() {
 }
 
 // src/instrumentation/cache.ts
-import { SpanKind as SpanKind10, trace as trace12 } from "@opentelemetry/api";
-var tracer = trace12.getTracer("cache instrumentation");
+import { SpanKind as SpanKind11, trace as trace13 } from "@opentelemetry/api";
+var tracer = trace13.getTracer("cache instrumentation");
 function sanitiseURL(url) {
   const u = new URL(url);
   return `${u.protocol}//${u.host}${u.pathname}${u.search}`;
@@ -2076,7 +2272,7 @@ function instrumentFunction(fn, cacheName, op) {
         "http.url": argArray[0].url ? sanitiseURL(argArray[0].url) : void 0,
         "cache.operation": op
       };
-      const options = { kind: SpanKind10.CLIENT, attributes };
+      const options = { kind: SpanKind11.CLIENT, attributes };
       return tracer.startActiveSpan(`Cache ${cacheName} ${op}`, options, async (span) => {
         const result = await Reflect.apply(target, thisArg, argArray);
         if (op === "match") {
@@ -2133,32 +2329,32 @@ function instrumentGlobalCache() {
 }
 
 // src/instrumentation/scheduled.ts
-import { trace as trace13, SpanKind as SpanKind11, context as api_context5, SpanStatusCode as SpanStatusCode6 } from "@opentelemetry/api";
-import { SemanticAttributes as SemanticAttributes8 } from "@opentelemetry/semantic-conventions";
+import { trace as trace14, SpanKind as SpanKind12, context as api_context6, SpanStatusCode as SpanStatusCode7 } from "@opentelemetry/api";
+import { SemanticAttributes as SemanticAttributes9 } from "@opentelemetry/semantic-conventions";
 var traceIdSymbol2 = Symbol("traceId");
 var cold_start3 = true;
 function executeScheduledHandler(scheduledFn, [controller, env, ctx]) {
-  const tracer2 = trace13.getTracer("scheduledHandler");
+  const tracer2 = trace14.getTracer("scheduledHandler");
   const attributes = {
-    [SemanticAttributes8.FAAS_TRIGGER]: "timer",
-    [SemanticAttributes8.FAAS_COLDSTART]: cold_start3,
-    [SemanticAttributes8.FAAS_CRON]: controller.cron,
-    [SemanticAttributes8.FAAS_TIME]: new Date(controller.scheduledTime).toISOString()
+    [SemanticAttributes9.FAAS_TRIGGER]: "timer",
+    [SemanticAttributes9.FAAS_COLDSTART]: cold_start3,
+    [SemanticAttributes9.FAAS_CRON]: controller.cron,
+    [SemanticAttributes9.FAAS_TIME]: new Date(controller.scheduledTime).toISOString()
   };
   cold_start3 = false;
   Object.assign(attributes, versionAttributes(env));
   const options = {
     attributes,
-    kind: SpanKind11.SERVER
+    kind: SpanKind12.SERVER
   };
   const promise = tracer2.startActiveSpan(`scheduledHandler ${controller.cron}`, options, async (span) => {
     const traceId = span.spanContext().traceId;
-    api_context5.active().setValue(traceIdSymbol2, traceId);
+    api_context6.active().setValue(traceIdSymbol2, traceId);
     try {
       await scheduledFn(controller, env, ctx);
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: SpanStatusCode6.ERROR });
+      span.setStatus({ code: SpanStatusCode7.ERROR });
       throw error;
     } finally {
       span.end();
@@ -2176,7 +2372,7 @@ function createScheduledHandler(scheduledFn, initialiser) {
       const context3 = setConfig(config);
       try {
         const args = [controller, env, ctx];
-        return await api_context5.with(context3, executeScheduledHandler, void 0, target, args);
+        return await api_context6.with(context3, executeScheduledHandler, void 0, target, args);
       } catch (error) {
         throw error;
       } finally {
@@ -2192,7 +2388,7 @@ var _microlabs_otel_cf_workers = "1.0.0-rc.49";
 var node = "23.7.0";
 
 // src/instrumentation/email.ts
-import { context as api_context6, SpanKind as SpanKind12, trace as trace14 } from "@opentelemetry/api";
+import { context as api_context7, SpanKind as SpanKind13, trace as trace15 } from "@opentelemetry/api";
 import {
   ATTR_FAAS_TRIGGER,
   ATTR_MESSAGING_DESTINATION_NAME,
@@ -2208,7 +2404,7 @@ function createEmailHandler(emailFn, initialiser) {
       const context3 = setConfig(config);
       try {
         const args = [message, env, ctx];
-        return await api_context6.with(context3, executeEmailHandler, void 0, target, args);
+        return await api_context7.with(context3, executeEmailHandler, void 0, target, args);
       } catch (error) {
         throw error;
       } finally {
@@ -2222,14 +2418,14 @@ function headerAttributes(message) {
   return Object.fromEntries([...message.headers].map(([key, value]) => [`email.header.${key}`, value]));
 }
 async function executeEmailHandler(emailFn, [message, env, ctx]) {
-  const tracer2 = trace14.getTracer("emailHandler");
+  const tracer2 = trace15.getTracer("emailHandler");
   const options = {
     attributes: {
       [ATTR_FAAS_TRIGGER]: "other",
       [ATTR_RPC_MESSAGE_ID]: message.headers.get("Message-Id") ?? void 0,
       [ATTR_MESSAGING_DESTINATION_NAME]: message.to
     },
-    kind: SpanKind12.CONSUMER
+    kind: SpanKind13.CONSUMER
   };
   Object.assign(options.attributes, headerAttributes(message), versionAttributes(env));
   const promise = tracer2.startActiveSpan(`emailHandler ${message.to}`, options, async (span) => {
@@ -2256,7 +2452,7 @@ import {
 var cold_start4 = true;
 function executePageHandler(pagesFn, [request]) {
   const spanContext = getParentContextFromRequest(request.request);
-  const tracer2 = trace15.getTracer("pagesHandler");
+  const tracer2 = trace16.getTracer("pagesHandler");
   const attributes = {
     [ATTR_FAAS_TRIGGER2]: "http",
     [ATTR_FAAS_COLDSTART]: cold_start4,
@@ -2268,7 +2464,7 @@ function executePageHandler(pagesFn, [request]) {
   Object.assign(attributes, versionAttributes(request.env));
   const options = {
     attributes,
-    kind: SpanKind13.SERVER
+    kind: SpanKind14.SERVER
   };
   const promise = tracer2.startActiveSpan(
     `fetchHandler ${request.request.method} ${request.functionPath}`,
@@ -2289,7 +2485,7 @@ function executePageHandler(pagesFn, [request]) {
           span.updateName(`fetchHandler ${request.request.method} ${readable.attributes["http.route"]}`);
         }
         span.recordException(error);
-        span.setStatus({ code: SpanStatusCode7.ERROR });
+        span.setStatus({ code: SpanStatusCode8.ERROR });
         span.end();
         throw error;
       }
@@ -2306,7 +2502,7 @@ function createPageHandler(pageFn, initialiser) {
       const context3 = setConfig(config);
       try {
         const args = [ctx];
-        return await api_context7.with(context3, executePageHandler, void 0, target, args);
+        return await api_context8.with(context3, executePageHandler, void 0, target, args);
       } catch (error) {
         throw error;
       } finally {
@@ -2347,7 +2543,7 @@ var createResource = (config) => {
   return resource.merge(serviceResource);
 };
 var initialised = false;
-function init(config) {
+function init2(config) {
   if (!initialised) {
     if (config.instrumentation.instrumentGlobalCache) {
       instrumentGlobalCache();
@@ -2365,14 +2561,14 @@ function init(config) {
 function createInitialiser(config) {
   if (typeof config === "function") {
     return (env, trigger) => {
-      const conf = parseConfig(config(env, trigger));
-      init(conf);
+      const conf = parseConfig2(config(env, trigger));
+      init2(conf);
       return conf;
     };
   } else {
     return () => {
-      const conf = parseConfig(config);
-      init(conf);
+      const conf = parseConfig2(config);
+      init2(conf);
       return conf;
     };
   }
@@ -2405,6 +2601,14 @@ function instrument(handler, config) {
 function instrumentDO(doClass, config) {
   const initialiser = createInitialiser(config);
   return instrumentDOClass(doClass, initialiser);
+}
+function instrumentRpc(rpcClass, config) {
+  const initialiser = createInitialiser(config);
+  return instrumentRpcClass(rpcClass, initialiser);
+}
+function instrumentRpcTarget2(targetClass, config) {
+  const initialiser = createInitialiser(config);
+  return instrumentRpcTarget(targetClass, initialiser);
 }
 var __unwrappedFetch = unwrap(fetch);
 
@@ -2461,6 +2665,8 @@ export {
   instrument,
   instrumentDO,
   instrumentPage,
+  instrumentRpc,
+  instrumentRpcTarget2 as instrumentRpcTarget,
   isAlarm,
   isHeadSampled,
   isMessageBatch,

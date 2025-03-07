@@ -2,13 +2,27 @@ import { isProxyable, wrap } from '../wrap.js'
 import { instrumentDOBinding } from './do.js'
 import { instrumentKV } from './kv.js'
 import { instrumentQueueSender } from './queue.js'
-import { instrumentServiceBinding } from './service.js'
+import { instrumentRpcBinding } from './rpc.js'
+// import { instrumentServiceBinding } from './service.js'
 import { instrumentD1 } from './d1'
 import { instrumentAnalyticsEngineDataset } from './analytics-engine.js'
 
 const isJSRPC = (item?: unknown): item is Service => {
-	// @ts-expect-error The point of RPC types is to block non-existent properties, but that's the goal here
-	return !!(item as Service)?.['__some_property_that_will_never_exist' + Math.random()]
+	if (!item || typeof item !== 'object') return false
+
+	// Try to detect RPC stub by checking for proxy behavior
+	try {
+		// RPC stubs typically have a handler that returns a function for any property
+		// Let's make up a random property name and see if accessing it returns a function
+		const testProp = `__test_rpc_${Math.random()}`
+		// @ts-expect-error We're testing if this is an RPC stub
+		const testMethod = item[testProp]
+		return typeof testMethod === 'function'
+	} catch (e) {
+		// If we can't determine, fall back to the original check
+		// @ts-expect-error The point of RPC types is to block non-existent properties, but that's the goal here
+		return !!(item as Service)?.['__some_property_that_will_never_exist' + Math.random()]
+	}
 }
 
 const isKVNamespace = (item?: unknown): item is KVNamespace => {
@@ -47,7 +61,8 @@ const instrumentEnv = (env: Record<string, unknown>): Record<string, unknown> =>
 				return item
 			}
 			if (isJSRPC(item)) {
-				return instrumentServiceBinding(item, String(prop))
+				// return instrumentServiceBinding(item, String(prop))
+				return instrumentRpcBinding(item, String(prop))
 			} else if (isKVNamespace(item)) {
 				return instrumentKV(item, String(prop))
 			} else if (isQueue(item)) {

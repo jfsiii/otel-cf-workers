@@ -9,11 +9,13 @@ import { createFetchHandler, instrumentGlobalFetch } from './instrumentation/fet
 import { instrumentGlobalCache } from './instrumentation/cache.js'
 import { createQueueHandler } from './instrumentation/queue.js'
 import { DOClass, instrumentDOClass } from './instrumentation/do.js'
+import { instrumentRpcClass, instrumentRpcTarget as _instrumentRpcTarget } from './instrumentation/rpc.js'
 import { createScheduledHandler } from './instrumentation/scheduled.js'
 //@ts-ignore
 import * as versions from '../versions.json'
 import { createEmailHandler } from './instrumentation/email.js'
 import { createPageHandler } from './instrumentation/page.js'
+import { WorkerEntrypoint, RpcTarget } from 'cloudflare:workers'
 
 type FetchHandler = ExportedHandlerFetchHandler<unknown, unknown>
 type ScheduledHandler = ExportedHandlerScheduledHandler<unknown>
@@ -134,6 +136,16 @@ export function instrumentDO(doClass: DOClass, config: ConfigurationOption) {
 	const initialiser = createInitialiser(config)
 
 	return instrumentDOClass(doClass, initialiser)
+}
+
+export function instrumentRpc<T extends typeof WorkerEntrypoint>(rpcClass: T, config: ConfigurationOption) {
+	const initialiser = createInitialiser(config)
+	return instrumentRpcClass(rpcClass, initialiser)
+}
+
+export function instrumentRpcTarget<T extends typeof RpcTarget>(targetClass: T, config: ConfigurationOption) {
+	const initialiser = createInitialiser(config)
+	return _instrumentRpcTarget(targetClass, initialiser)
 }
 
 export { waitUntilTrace } from './instrumentation/fetch.js'
