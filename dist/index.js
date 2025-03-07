@@ -31,7 +31,7 @@ __export(src_exports, {
   instrumentDO: () => instrumentDO,
   instrumentPage: () => instrumentPage,
   instrumentRpc: () => instrumentRpc,
-  instrumentRpcTarget: () => instrumentRpcTarget2,
+  instrumentRpcTarget: () => instrumentRpcTarget,
   isAlarm: () => isAlarm,
   isHeadSampled: () => isHeadSampled,
   isMessageBatch: () => isMessageBatch,
@@ -416,7 +416,7 @@ function isSpanExporter(exporterConfig) {
 function isSampler(sampler) {
   return !!sampler.shouldSample;
 }
-function parseConfig2(supplied) {
+function parseConfig(supplied) {
   if (isSpanProcessorConfig(supplied)) {
     const headSampleConf = supplied.sampling?.headSampler;
     const headSampler = headSampleConf ? isSampler(headSampleConf) ? headSampleConf : createSampler(headSampleConf) : new import_sdk_trace_base2.AlwaysOnSampler();
@@ -452,7 +452,7 @@ function parseConfig2(supplied) {
     const exporter = isSpanExporter(supplied.exporter) ? supplied.exporter : new OTLPExporter(supplied.exporter);
     const spanProcessors = [new BatchTraceSpanProcessor(exporter)];
     const newConfig = Object.assign(supplied, { exporter: void 0, spanProcessors });
-    return parseConfig2(newConfig);
+    return parseConfig(newConfig);
   }
 }
 
@@ -693,16 +693,16 @@ var SpanImpl = class {
   _droppedAttributesCount = 0;
   _droppedEventsCount = 0;
   _droppedLinksCount = 0;
-  constructor(init3) {
-    this.name = init3.name;
-    this._spanContext = init3.spanContext;
-    this.parentSpanId = init3.parentSpanId;
-    this.kind = init3.spanKind || import_api5.SpanKind.INTERNAL;
-    this.attributes = (0, import_core4.sanitizeAttributes)(init3.attributes);
-    this.startTime = getHrTime(init3.startTime);
-    this.links = init3.links || [];
-    this.resource = init3.resource;
-    this.onEnd = init3.onEnd;
+  constructor(init2) {
+    this.name = init2.name;
+    this._spanContext = init2.spanContext;
+    this.parentSpanId = init2.parentSpanId;
+    this.kind = init2.spanKind || import_api5.SpanKind.INTERNAL;
+    this.attributes = (0, import_core4.sanitizeAttributes)(init2.attributes);
+    this.startTime = getHrTime(init2.startTime);
+    this.links = init2.links || [];
+    this.resource = init2.resource;
+    this.onEnd = init2.onEnd;
   }
   addLink(link) {
     this.links.push(link);
@@ -1721,7 +1721,7 @@ async function executeRpcMethod(method, thisArg, args, methodName) {
     }
   });
 }
-function instrumentRpcTarget(targetClass, initialiser) {
+function instrumentRpcTargetClass(targetClass, initialiser) {
   const classHandler = {
     construct(target, args) {
       const instance = new target(...args);
@@ -2464,7 +2464,7 @@ async function executeEmailHandler(emailFn, [message, env, ctx]) {
 }
 
 // src/instrumentation/page.ts
-var import_api19 = require("@opentelemetry/api");
+var import_api20 = require("@opentelemetry/api");
 var import_incubating2 = require("@opentelemetry/semantic-conventions/incubating");
 var cold_start4 = true;
 function executePageHandler(pagesFn, [request]) {
@@ -2560,7 +2560,7 @@ var createResource = (config) => {
   return resource.merge(serviceResource);
 };
 var initialised = false;
-function init2(config) {
+function init(config) {
   if (!initialised) {
     if (config.instrumentation.instrumentGlobalCache) {
       instrumentGlobalCache();
@@ -2578,14 +2578,14 @@ function init2(config) {
 function createInitialiser(config) {
   if (typeof config === "function") {
     return (env, trigger) => {
-      const conf = parseConfig2(config(env, trigger));
-      init2(conf);
+      const conf = parseConfig(config(env, trigger));
+      init(conf);
       return conf;
     };
   } else {
     return () => {
-      const conf = parseConfig2(config);
-      init2(conf);
+      const conf = parseConfig(config);
+      init(conf);
       return conf;
     };
   }
@@ -2623,9 +2623,9 @@ function instrumentRpc(rpcClass, config) {
   const initialiser = createInitialiser(config);
   return instrumentRpcClass(rpcClass, initialiser);
 }
-function instrumentRpcTarget2(targetClass, config) {
+function instrumentRpcTarget(targetClass, config) {
   const initialiser = createInitialiser(config);
-  return instrumentRpcTarget(targetClass, initialiser);
+  return instrumentRpcTargetClass(targetClass, initialiser);
 }
 var __unwrappedFetch = unwrap(fetch);
 

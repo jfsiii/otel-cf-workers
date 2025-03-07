@@ -9,7 +9,7 @@ import { createFetchHandler, instrumentGlobalFetch } from './instrumentation/fet
 import { instrumentGlobalCache } from './instrumentation/cache.js'
 import { createQueueHandler } from './instrumentation/queue.js'
 import { DOClass, instrumentDOClass } from './instrumentation/do.js'
-import { instrumentRpcClass, instrumentRpcTarget as _instrumentRpcTarget } from './instrumentation/rpc.js'
+import { instrumentRpcClass, instrumentRpcTargetClass } from './instrumentation/rpc.js'
 import { createScheduledHandler } from './instrumentation/scheduled.js'
 //@ts-ignore
 import * as versions from '../versions.json'
@@ -138,14 +138,20 @@ export function instrumentDO(doClass: DOClass, config: ConfigurationOption) {
 	return instrumentDOClass(doClass, initialiser)
 }
 
-export function instrumentRpc<T extends typeof WorkerEntrypoint>(rpcClass: T, config: ConfigurationOption) {
+export function instrumentRpc<T extends new (...args: any[]) => WorkerEntrypoint>(
+	rpcClass: T,
+	config: ConfigurationOption,
+) {
 	const initialiser = createInitialiser(config)
 	return instrumentRpcClass(rpcClass, initialiser)
 }
 
-export function instrumentRpcTarget<T extends typeof RpcTarget>(targetClass: T, config: ConfigurationOption) {
+export function instrumentRpcTarget<T extends new (...args: any[]) => RpcTarget>(
+	targetClass: T,
+	config: ConfigurationOption,
+) {
 	const initialiser = createInitialiser(config)
-	return _instrumentRpcTarget(targetClass, initialiser)
+	return instrumentRpcTargetClass(targetClass, initialiser)
 }
 
 export { waitUntilTrace } from './instrumentation/fetch.js'

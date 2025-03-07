@@ -12,7 +12,10 @@ import { WorkerEntrypoint, RpcTarget } from 'cloudflare:workers'
  * Instruments a class that extends WorkerEntrypoint, tracing all method calls
  * made via RPC.
  */
-export function instrumentRpcClass<T extends typeof WorkerEntrypoint>(rpcClass: T, initialiser: Initialiser): T {
+export function instrumentRpcClass<T extends new (...args: any[]) => WorkerEntrypoint>(
+	rpcClass: T,
+	initialiser: Initialiser,
+): T {
 	const classHandler: ProxyHandler<T> = {
 		construct(target, args) {
 			// Create the original instance
@@ -136,7 +139,10 @@ async function executeRpcMethod(method: Function, thisArg: any, args: any[], met
 /**
  * Instruments a class that extends RpcTarget for cross-service tracing
  */
-export function instrumentRpcTarget<T extends typeof RpcTarget>(targetClass: T, initialiser: Initialiser): T {
+export function instrumentRpcTargetClass<T extends new (...args: any[]) => RpcTarget>(
+	targetClass: T,
+	initialiser: Initialiser,
+): T {
 	const classHandler: ProxyHandler<T> = {
 		construct(target, args) {
 			const instance = new target(...args)
@@ -330,35 +336,5 @@ function isRpcStub(obj: any): boolean {
 	} catch (e) {
 		// If we can't determine, be conservative
 		return false
-	}
-}
-
-// Add to the SDK export
-export function instrumentRpc<T extends typeof WorkerEntrypoint>(rpcClass: T, config: any) {
-	const initialiser = createInitialiser(config)
-	return instrumentRpcClass(rpcClass, initialiser)
-}
-
-export function instrumentRpcTargetClass<T extends typeof RpcTarget>(targetClass: T, config: any) {
-	const initialiser = createInitialiser(config)
-	return instrumentRpcTarget(targetClass, initialiser)
-}
-
-// Helper for creating initializers - similar to the one in sdk.js
-function createInitialiser(config: any): Initialiser {
-	// This is a simplified version - import the actual implementation
-	if (typeof config === 'function') {
-		return (env, trigger) => {
-			// Assuming parseConfig and init are imported from their modules
-			const conf = parseConfig(config(env, trigger))
-			init(conf)
-			return conf
-		}
-	} else {
-		return () => {
-			const conf = parseConfig(config)
-			init(conf)
-			return conf
-		}
 	}
 }

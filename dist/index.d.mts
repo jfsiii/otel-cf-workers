@@ -112,8 +112,8 @@ declare function isAlarm(trigger: Trigger): trigger is 'do-alarm';
 declare function instrumentPage<E = unknown, P extends string = any, D extends Record<string, unknown> = Record<string, unknown>>(handler: PagesFunction<E, P, D>, config: ConfigurationOption): PagesFunction<E, P, D>;
 declare function instrument<E, Q, C>(handler: ExportedHandler<E, Q, C>, config: ConfigurationOption): ExportedHandler<E, Q, C>;
 declare function instrumentDO(doClass: DOClass, config: ConfigurationOption): DOClass;
-declare function instrumentRpc<T extends typeof WorkerEntrypoint>(rpcClass: T, config: ConfigurationOption): T;
-declare function instrumentRpcTarget<T extends typeof RpcTarget>(targetClass: T, config: ConfigurationOption): T;
+declare function instrumentRpc<T extends new (...args: any[]) => WorkerEntrypoint>(rpcClass: T, config: ConfigurationOption): T;
+declare function instrumentRpcTarget<T extends new (...args: any[]) => RpcTarget>(targetClass: T, config: ConfigurationOption): T;
 
 declare const __unwrappedFetch: typeof fetch;
 
