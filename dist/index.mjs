@@ -2248,14 +2248,19 @@ async function executeEmailHandler(emailFn, [message, env, ctx]) {
 
 // src/instrumentation/page.ts
 import { SpanKind as SpanKind13, SpanStatusCode as SpanStatusCode7, context as api_context7, trace as trace15 } from "@opentelemetry/api";
+import {
+  ATTR_FAAS_COLDSTART,
+  ATTR_FAAS_INVOCATION_ID,
+  ATTR_FAAS_TRIGGER as ATTR_FAAS_TRIGGER2
+} from "@opentelemetry/semantic-conventions/incubating";
 var cold_start4 = true;
 function executePageHandler(pagesFn, [request]) {
   const spanContext = getParentContextFromRequest(request.request);
   const tracer2 = trace15.getTracer("pagesHandler");
   const attributes = {
-    ["faas.trigger"]: "http",
-    ["faas.coldstart"]: cold_start4,
-    ["faas.invocation_id"]: request.request.headers.get("cf-ray") ?? void 0
+    [ATTR_FAAS_TRIGGER2]: "http",
+    [ATTR_FAAS_COLDSTART]: cold_start4,
+    [ATTR_FAAS_INVOCATION_ID]: request.request.headers.get("cf-ray") ?? void 0
   };
   cold_start4 = false;
   Object.assign(attributes, gatherRequestAttributes(request.request));
