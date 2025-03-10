@@ -2265,6 +2265,7 @@ function executePageHandler(pagesFn, [request]) {
   cold_start4 = false;
   Object.assign(attributes, gatherRequestAttributes(request.request));
   Object.assign(attributes, gatherIncomingCfAttributes(request.request));
+  Object.assign(attributes, versionAttributes(request.env));
   const options = {
     attributes,
     kind: SpanKind13.SERVER

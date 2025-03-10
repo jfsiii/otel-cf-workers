@@ -14,6 +14,7 @@ import {
 	ATTR_FAAS_INVOCATION_ID,
 	ATTR_FAAS_TRIGGER,
 } from '@opentelemetry/semantic-conventions/incubating'
+import { versionAttributes } from './version.js'
 
 type PageHandlerArgs = Parameters<PagesFunction>
 
@@ -30,6 +31,7 @@ export function executePageHandler(pagesFn: PagesFunction, [request]: PageHandle
 	cold_start = false
 	Object.assign(attributes, gatherRequestAttributes(request.request))
 	Object.assign(attributes, gatherIncomingCfAttributes(request.request))
+	Object.assign(attributes, versionAttributes(request.env))
 	const options: SpanOptions = {
 		attributes,
 		kind: SpanKind.SERVER,
