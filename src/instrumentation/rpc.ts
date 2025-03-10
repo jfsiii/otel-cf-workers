@@ -1,5 +1,5 @@
 import { context as api_context, trace, SpanOptions, SpanKind, Exception, SpanStatusCode } from '@opentelemetry/api'
-import { SemanticAttributes } from '@opentelemetry/semantic-conventions'
+import { ATTR_RPC_METHOD, ATTR_RPC_SERVICE, ATTR_RPC_SYSTEM } from '@opentelemetry/semantic-conventions/incubating'
 import { passthroughGet, unwrap, wrap, isProxyable } from '../wrap.js'
 // import { getParentContextFromHeaders, gatherRequestAttributes, gatherResponseAttributes } from './fetch.js'
 import { instrumentEnv } from './env.js'
@@ -100,9 +100,9 @@ async function executeRpcMethod(method: Function, thisArg: any, args: any[], met
 
 	// Create span attributes
 	const attributes = {
-		[SemanticAttributes.RPC_SYSTEM]: 'cloudflare_workers',
-		[SemanticAttributes.RPC_SERVICE]: thisArg.constructor.name,
-		[SemanticAttributes.RPC_METHOD]: methodName,
+		[ATTR_RPC_SYSTEM]: 'cloudflare.workers',
+		[ATTR_RPC_SERVICE]: thisArg.constructor.name,
+		[ATTR_RPC_METHOD]: methodName,
 		'rpc.arguments_count': args.length,
 	}
 

@@ -1622,7 +1622,7 @@ function instrumentQueueSender(queue, name) {
 
 // src/instrumentation/rpc.ts
 import { context as api_context4, trace as trace9, SpanKind as SpanKind7, SpanStatusCode as SpanStatusCode4 } from "@opentelemetry/api";
-import { SemanticAttributes as SemanticAttributes6 } from "@opentelemetry/semantic-conventions";
+import { ATTR_RPC_METHOD, ATTR_RPC_SERVICE, ATTR_RPC_SYSTEM } from "@opentelemetry/semantic-conventions/incubating";
 function instrumentRpcClass(rpcClass, initialiser) {
   const classHandler = {
     construct(target, args) {
@@ -1671,9 +1671,9 @@ function instrumentRpcMethod(method, methodName, initialiser, instance) {
 async function executeRpcMethod(method, thisArg, args, methodName) {
   const tracer2 = trace9.getTracer("rpc");
   const attributes = {
-    [SemanticAttributes6.RPC_SYSTEM]: "cloudflare_workers",
-    [SemanticAttributes6.RPC_SERVICE]: thisArg.constructor.name,
-    [SemanticAttributes6.RPC_METHOD]: methodName,
+    [ATTR_RPC_SYSTEM]: "cloudflare_workers",
+    [ATTR_RPC_SERVICE]: thisArg.constructor.name,
+    [ATTR_RPC_METHOD]: methodName,
     "rpc.arguments_count": args.length
   };
   const options = {
@@ -1829,7 +1829,7 @@ function isRpcStub(obj) {
 
 // src/instrumentation/d1.ts
 import { SpanKind as SpanKind8, SpanStatusCode as SpanStatusCode5, trace as trace10 } from "@opentelemetry/api";
-import { SemanticAttributes as SemanticAttributes7 } from "@opentelemetry/semantic-conventions";
+import { SemanticAttributes as SemanticAttributes6 } from "@opentelemetry/semantic-conventions";
 var dbSystem3 = "Cloudflare D1";
 function metaAttributes(meta) {
   return {
@@ -1845,12 +1845,12 @@ function metaAttributes(meta) {
 function spanOptions(dbName, operation, sql) {
   const attributes = {
     binding_type: "D1",
-    [SemanticAttributes7.DB_NAME]: dbName,
-    [SemanticAttributes7.DB_SYSTEM]: dbSystem3,
-    [SemanticAttributes7.DB_OPERATION]: operation
+    [SemanticAttributes6.DB_NAME]: dbName,
+    [SemanticAttributes6.DB_SYSTEM]: dbSystem3,
+    [SemanticAttributes6.DB_OPERATION]: operation
   };
   if (sql) {
-    attributes[SemanticAttributes7.DB_STATEMENT] = sql;
+    attributes[SemanticAttributes6.DB_STATEMENT] = sql;
   }
   return {
     kind: SpanKind8.CLIENT,
@@ -1966,7 +1966,7 @@ function instrumentD1(database, dbName) {
 
 // src/instrumentation/analytics-engine.ts
 import { SpanKind as SpanKind9, trace as trace11 } from "@opentelemetry/api";
-import { SemanticAttributes as SemanticAttributes8 } from "@opentelemetry/semantic-conventions";
+import { SemanticAttributes as SemanticAttributes7 } from "@opentelemetry/semantic-conventions";
 var dbSystem4 = "Cloudflare Analytics Engine";
 var AEAttributes = {
   writeDataPoint(argArray) {
@@ -1987,9 +1987,9 @@ function instrumentAEFn(fn, name, operation) {
     apply: (target, thisArg, argArray) => {
       const attributes = {
         binding_type: "AnalyticsEngine",
-        [SemanticAttributes8.DB_NAME]: name,
-        [SemanticAttributes8.DB_SYSTEM]: dbSystem4,
-        [SemanticAttributes8.DB_OPERATION]: operation
+        [SemanticAttributes7.DB_NAME]: name,
+        [SemanticAttributes7.DB_SYSTEM]: dbSystem4,
+        [SemanticAttributes7.DB_OPERATION]: operation
       };
       const options = {
         kind: SpanKind9.CLIENT,
@@ -2000,7 +2000,7 @@ function instrumentAEFn(fn, name, operation) {
         const extraAttrsFn = AEAttributes[operation];
         const extraAttrs = extraAttrsFn ? extraAttrsFn(argArray, result) : {};
         span.setAttributes(extraAttrs);
-        span.setAttribute(SemanticAttributes8.DB_STATEMENT, `${operation} ${argArray[0]}`);
+        span.setAttribute(SemanticAttributes7.DB_STATEMENT, `${operation} ${argArray[0]}`);
         span.end();
         return result;
       });
@@ -2330,16 +2330,16 @@ function instrumentGlobalCache() {
 
 // src/instrumentation/scheduled.ts
 import { trace as trace14, SpanKind as SpanKind12, context as api_context6, SpanStatusCode as SpanStatusCode7 } from "@opentelemetry/api";
-import { SemanticAttributes as SemanticAttributes9 } from "@opentelemetry/semantic-conventions";
+import { SemanticAttributes as SemanticAttributes8 } from "@opentelemetry/semantic-conventions";
 var traceIdSymbol2 = Symbol("traceId");
 var cold_start3 = true;
 function executeScheduledHandler(scheduledFn, [controller, env, ctx]) {
   const tracer2 = trace14.getTracer("scheduledHandler");
   const attributes = {
-    [SemanticAttributes9.FAAS_TRIGGER]: "timer",
-    [SemanticAttributes9.FAAS_COLDSTART]: cold_start3,
-    [SemanticAttributes9.FAAS_CRON]: controller.cron,
-    [SemanticAttributes9.FAAS_TIME]: new Date(controller.scheduledTime).toISOString()
+    [SemanticAttributes8.FAAS_TRIGGER]: "timer",
+    [SemanticAttributes8.FAAS_COLDSTART]: cold_start3,
+    [SemanticAttributes8.FAAS_CRON]: controller.cron,
+    [SemanticAttributes8.FAAS_TIME]: new Date(controller.scheduledTime).toISOString()
   };
   cold_start3 = false;
   Object.assign(attributes, versionAttributes(env));

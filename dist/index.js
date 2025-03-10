@@ -1647,7 +1647,7 @@ function instrumentQueueSender(queue, name) {
 
 // src/instrumentation/rpc.ts
 var import_api13 = require("@opentelemetry/api");
-var import_semantic_conventions6 = require("@opentelemetry/semantic-conventions");
+var import_incubating = require("@opentelemetry/semantic-conventions/incubating");
 function instrumentRpcClass(rpcClass, initialiser) {
   const classHandler = {
     construct(target, args) {
@@ -1696,9 +1696,9 @@ function instrumentRpcMethod(method, methodName, initialiser, instance) {
 async function executeRpcMethod(method, thisArg, args, methodName) {
   const tracer2 = import_api13.trace.getTracer("rpc");
   const attributes = {
-    [import_semantic_conventions6.SemanticAttributes.RPC_SYSTEM]: "cloudflare_workers",
-    [import_semantic_conventions6.SemanticAttributes.RPC_SERVICE]: thisArg.constructor.name,
-    [import_semantic_conventions6.SemanticAttributes.RPC_METHOD]: methodName,
+    [import_incubating.ATTR_RPC_SYSTEM]: "cloudflare_workers",
+    [import_incubating.ATTR_RPC_SERVICE]: thisArg.constructor.name,
+    [import_incubating.ATTR_RPC_METHOD]: methodName,
     "rpc.arguments_count": args.length
   };
   const options = {
@@ -1854,7 +1854,7 @@ function isRpcStub(obj) {
 
 // src/instrumentation/d1.ts
 var import_api14 = require("@opentelemetry/api");
-var import_semantic_conventions7 = require("@opentelemetry/semantic-conventions");
+var import_semantic_conventions6 = require("@opentelemetry/semantic-conventions");
 var dbSystem3 = "Cloudflare D1";
 function metaAttributes(meta) {
   return {
@@ -1870,12 +1870,12 @@ function metaAttributes(meta) {
 function spanOptions(dbName, operation, sql) {
   const attributes = {
     binding_type: "D1",
-    [import_semantic_conventions7.SemanticAttributes.DB_NAME]: dbName,
-    [import_semantic_conventions7.SemanticAttributes.DB_SYSTEM]: dbSystem3,
-    [import_semantic_conventions7.SemanticAttributes.DB_OPERATION]: operation
+    [import_semantic_conventions6.SemanticAttributes.DB_NAME]: dbName,
+    [import_semantic_conventions6.SemanticAttributes.DB_SYSTEM]: dbSystem3,
+    [import_semantic_conventions6.SemanticAttributes.DB_OPERATION]: operation
   };
   if (sql) {
-    attributes[import_semantic_conventions7.SemanticAttributes.DB_STATEMENT] = sql;
+    attributes[import_semantic_conventions6.SemanticAttributes.DB_STATEMENT] = sql;
   }
   return {
     kind: import_api14.SpanKind.CLIENT,
@@ -1991,7 +1991,7 @@ function instrumentD1(database, dbName) {
 
 // src/instrumentation/analytics-engine.ts
 var import_api15 = require("@opentelemetry/api");
-var import_semantic_conventions8 = require("@opentelemetry/semantic-conventions");
+var import_semantic_conventions7 = require("@opentelemetry/semantic-conventions");
 var dbSystem4 = "Cloudflare Analytics Engine";
 var AEAttributes = {
   writeDataPoint(argArray) {
@@ -2012,9 +2012,9 @@ function instrumentAEFn(fn, name, operation) {
     apply: (target, thisArg, argArray) => {
       const attributes = {
         binding_type: "AnalyticsEngine",
-        [import_semantic_conventions8.SemanticAttributes.DB_NAME]: name,
-        [import_semantic_conventions8.SemanticAttributes.DB_SYSTEM]: dbSystem4,
-        [import_semantic_conventions8.SemanticAttributes.DB_OPERATION]: operation
+        [import_semantic_conventions7.SemanticAttributes.DB_NAME]: name,
+        [import_semantic_conventions7.SemanticAttributes.DB_SYSTEM]: dbSystem4,
+        [import_semantic_conventions7.SemanticAttributes.DB_OPERATION]: operation
       };
       const options = {
         kind: import_api15.SpanKind.CLIENT,
@@ -2025,7 +2025,7 @@ function instrumentAEFn(fn, name, operation) {
         const extraAttrsFn = AEAttributes[operation];
         const extraAttrs = extraAttrsFn ? extraAttrsFn(argArray, result) : {};
         span.setAttributes(extraAttrs);
-        span.setAttribute(import_semantic_conventions8.SemanticAttributes.DB_STATEMENT, `${operation} ${argArray[0]}`);
+        span.setAttribute(import_semantic_conventions7.SemanticAttributes.DB_STATEMENT, `${operation} ${argArray[0]}`);
         span.end();
         return result;
       });
@@ -2355,16 +2355,16 @@ function instrumentGlobalCache() {
 
 // src/instrumentation/scheduled.ts
 var import_api18 = require("@opentelemetry/api");
-var import_semantic_conventions9 = require("@opentelemetry/semantic-conventions");
+var import_semantic_conventions8 = require("@opentelemetry/semantic-conventions");
 var traceIdSymbol2 = Symbol("traceId");
 var cold_start3 = true;
 function executeScheduledHandler(scheduledFn, [controller, env, ctx]) {
   const tracer2 = import_api18.trace.getTracer("scheduledHandler");
   const attributes = {
-    [import_semantic_conventions9.SemanticAttributes.FAAS_TRIGGER]: "timer",
-    [import_semantic_conventions9.SemanticAttributes.FAAS_COLDSTART]: cold_start3,
-    [import_semantic_conventions9.SemanticAttributes.FAAS_CRON]: controller.cron,
-    [import_semantic_conventions9.SemanticAttributes.FAAS_TIME]: new Date(controller.scheduledTime).toISOString()
+    [import_semantic_conventions8.SemanticAttributes.FAAS_TRIGGER]: "timer",
+    [import_semantic_conventions8.SemanticAttributes.FAAS_COLDSTART]: cold_start3,
+    [import_semantic_conventions8.SemanticAttributes.FAAS_CRON]: controller.cron,
+    [import_semantic_conventions8.SemanticAttributes.FAAS_TIME]: new Date(controller.scheduledTime).toISOString()
   };
   cold_start3 = false;
   Object.assign(attributes, versionAttributes(env));
@@ -2414,7 +2414,7 @@ var node = "23.7.0";
 
 // src/instrumentation/email.ts
 var import_api19 = require("@opentelemetry/api");
-var import_incubating = require("@opentelemetry/semantic-conventions/incubating");
+var import_incubating2 = require("@opentelemetry/semantic-conventions/incubating");
 function createEmailHandler(emailFn, initialiser) {
   const emailHandler = {
     async apply(target, _thisArg, argArray) {
@@ -2442,9 +2442,9 @@ async function executeEmailHandler(emailFn, [message, env, ctx]) {
   const tracer2 = import_api19.trace.getTracer("emailHandler");
   const options = {
     attributes: {
-      [import_incubating.ATTR_FAAS_TRIGGER]: "other",
-      [import_incubating.ATTR_RPC_MESSAGE_ID]: message.headers.get("Message-Id") ?? void 0,
-      [import_incubating.ATTR_MESSAGING_DESTINATION_NAME]: message.to
+      [import_incubating2.ATTR_FAAS_TRIGGER]: "other",
+      [import_incubating2.ATTR_RPC_MESSAGE_ID]: message.headers.get("Message-Id") ?? void 0,
+      [import_incubating2.ATTR_MESSAGING_DESTINATION_NAME]: message.to
     },
     kind: import_api19.SpanKind.CONSUMER
   };
@@ -2465,15 +2465,15 @@ async function executeEmailHandler(emailFn, [message, env, ctx]) {
 
 // src/instrumentation/page.ts
 var import_api20 = require("@opentelemetry/api");
-var import_incubating2 = require("@opentelemetry/semantic-conventions/incubating");
+var import_incubating3 = require("@opentelemetry/semantic-conventions/incubating");
 var cold_start4 = true;
 function executePageHandler(pagesFn, [request]) {
   const spanContext = getParentContextFromRequest(request.request);
   const tracer2 = import_api20.trace.getTracer("pagesHandler");
   const attributes = {
-    [import_incubating2.ATTR_FAAS_TRIGGER]: "http",
-    [import_incubating2.ATTR_FAAS_COLDSTART]: cold_start4,
-    [import_incubating2.ATTR_FAAS_INVOCATION_ID]: request.request.headers.get("cf-ray") ?? void 0
+    [import_incubating3.ATTR_FAAS_TRIGGER]: "http",
+    [import_incubating3.ATTR_FAAS_COLDSTART]: cold_start4,
+    [import_incubating3.ATTR_FAAS_INVOCATION_ID]: request.request.headers.get("cf-ray") ?? void 0
   };
   cold_start4 = false;
   Object.assign(attributes, gatherRequestAttributes(request.request));
