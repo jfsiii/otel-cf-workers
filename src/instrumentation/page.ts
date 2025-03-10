@@ -38,7 +38,7 @@ export function executePageHandler(pagesFn: PagesFunction, [request]: PageHandle
 	}
 
 	const promise = tracer.startActiveSpan(
-		`${request.request.method} ${request.functionPath}`,
+		`fetchHandler ${request.request.method} ${request.functionPath}`,
 		options,
 		spanContext,
 		async (span) => {
@@ -47,14 +47,14 @@ export function executePageHandler(pagesFn: PagesFunction, [request]: PageHandle
 				const response: Response = await pagesFn(request)
 				span.setAttributes(gatherResponseAttributes(response))
 				if (readable.attributes['http.route']) {
-					span.updateName(`${request.request.method} ${readable.attributes['http.route']}`)
+					span.updateName(`fetchHandler ${request.request.method} ${readable.attributes['http.route']}`)
 				}
 				span.end()
 
 				return response
 			} catch (error) {
 				if (readable.attributes['http.route']) {
-					span.updateName(`${request.request.method} ${readable.attributes['http.route']}`)
+					span.updateName(`fetchHandler ${request.request.method} ${readable.attributes['http.route']}`)
 				}
 				span.recordException(error as Exception)
 				span.setStatus({ code: SpanStatusCode.ERROR })

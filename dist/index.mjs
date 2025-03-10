@@ -2271,7 +2271,7 @@ function executePageHandler(pagesFn, [request]) {
     kind: SpanKind13.SERVER
   };
   const promise = tracer2.startActiveSpan(
-    `${request.request.method} ${request.functionPath}`,
+    `fetchHandler ${request.request.method} ${request.functionPath}`,
     options,
     spanContext,
     async (span) => {
@@ -2280,13 +2280,13 @@ function executePageHandler(pagesFn, [request]) {
         const response = await pagesFn(request);
         span.setAttributes(gatherResponseAttributes(response));
         if (readable.attributes["http.route"]) {
-          span.updateName(`${request.request.method} ${readable.attributes["http.route"]}`);
+          span.updateName(`fetchHandler ${request.request.method} ${readable.attributes["http.route"]}`);
         }
         span.end();
         return response;
       } catch (error) {
         if (readable.attributes["http.route"]) {
-          span.updateName(`${request.request.method} ${readable.attributes["http.route"]}`);
+          span.updateName(`fetchHandler ${request.request.method} ${readable.attributes["http.route"]}`);
         }
         span.recordException(error);
         span.setStatus({ code: SpanStatusCode7.ERROR });
