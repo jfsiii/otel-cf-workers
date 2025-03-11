@@ -30,8 +30,8 @@ __export(src_exports, {
   instrument: () => instrument,
   instrumentDO: () => instrumentDO,
   instrumentPage: () => instrumentPage,
-  instrumentRpc: () => instrumentRpc,
   instrumentRpcTarget: () => instrumentRpcTarget,
+  instrumentWorkersEntrypoint: () => instrumentWorkersEntrypoint,
   isAlarm: () => isAlarm,
   isHeadSampled: () => isHeadSampled,
   isMessageBatch: () => isMessageBatch,
@@ -1696,7 +1696,7 @@ function instrumentRpcMethod(method, methodName, initialiser, instance) {
 async function executeRpcMethod(method, thisArg, args, methodName) {
   const tracer2 = import_api13.trace.getTracer("rpc");
   const attributes = {
-    [import_incubating.ATTR_RPC_SYSTEM]: "cloudflare_workers",
+    [import_incubating.ATTR_RPC_SYSTEM]: "cloudflare.workers",
     [import_incubating.ATTR_RPC_SERVICE]: thisArg.constructor.name,
     [import_incubating.ATTR_RPC_METHOD]: methodName,
     "rpc.arguments_count": args.length
@@ -1850,6 +1850,24 @@ function isRpcStub(obj) {
   } catch (e) {
     return false;
   }
+}
+
+// src/instrumentation/service.ts
+function instrumentServiceBinding(fetcher, envName) {
+  const fetcherHandler = {
+    get(target, prop) {
+      if (prop === "fetch") {
+        const fetcher2 = Reflect.get(target, prop);
+        const attrs = {
+          name: `Service Binding ${envName}`
+        };
+        return instrumentClientFetch(fetcher2, () => ({ includeTraceContext: true }), attrs);
+      } else {
+        return passthroughGet(target, prop);
+      }
+    }
+  };
+  return wrap(fetcher, fetcherHandler);
 }
 
 // src/instrumentation/d1.ts
@@ -2080,8 +2098,10 @@ var instrumentEnv = (env) => {
       if (!isProxyable(item)) {
         return item;
       }
-      if (isJSRPC(item)) {
+      if (isRpcStub(item)) {
         return instrumentRpcBinding(item, String(prop));
+      } else if (isJSRPC(item)) {
+        return instrumentServiceBinding(item, String(prop));
       } else if (isKVNamespace(item)) {
         return instrumentKV(item, String(prop));
       } else if (isQueue(item)) {
@@ -2619,9 +2639,9 @@ function instrumentDO(doClass, config) {
   const initialiser = createInitialiser(config);
   return instrumentDOClass(doClass, initialiser);
 }
-function instrumentRpc(rpcClass, config) {
+function instrumentWorkersEntrypoint(entrypointClass, config) {
   const initialiser = createInitialiser(config);
-  return instrumentRpcClass(rpcClass, initialiser);
+  return instrumentRpcClass(entrypointClass, initialiser);
 }
 function instrumentRpcTarget(targetClass, config) {
   const initialiser = createInitialiser(config);
@@ -2683,8 +2703,8 @@ var MultiSpanExporterAsync = class {
   instrument,
   instrumentDO,
   instrumentPage,
-  instrumentRpc,
   instrumentRpcTarget,
+  instrumentWorkersEntrypoint,
   isAlarm,
   isHeadSampled,
   isMessageBatch,

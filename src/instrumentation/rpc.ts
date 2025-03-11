@@ -311,7 +311,7 @@ function instrumentRpcBindingMethod(method: Function, bindingName: string, metho
 /**
  * Determines if an object is an RPC stub
  */
-function isRpcStub(obj: any): boolean {
+export function isRpcStub(obj: any): boolean {
 	if (!isProxyable(obj)) {
 		return false
 	}

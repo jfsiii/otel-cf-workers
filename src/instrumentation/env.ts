@@ -2,8 +2,8 @@ import { isProxyable, wrap } from '../wrap.js'
 import { instrumentDOBinding } from './do.js'
 import { instrumentKV } from './kv.js'
 import { instrumentQueueSender } from './queue.js'
-import { instrumentRpcBinding } from './rpc.js'
-// import { instrumentServiceBinding } from './service.js'
+import { isRpcStub, instrumentRpcBinding } from './rpc.js'
+import { instrumentServiceBinding } from './service.js'
 import { instrumentD1 } from './d1'
 import { instrumentAnalyticsEngineDataset } from './analytics-engine.js'
 
@@ -60,9 +60,10 @@ const instrumentEnv = (env: Record<string, unknown>): Record<string, unknown> =>
 			if (!isProxyable(item)) {
 				return item
 			}
-			if (isJSRPC(item)) {
-				// return instrumentServiceBinding(item, String(prop))
+			if (isRpcStub(item)) {
 				return instrumentRpcBinding(item, String(prop))
+			} else if (isJSRPC(item)) {
+				return instrumentServiceBinding(item, String(prop))
 			} else if (isKVNamespace(item)) {
 				return instrumentKV(item, String(prop))
 			} else if (isQueue(item)) {

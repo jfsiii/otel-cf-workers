@@ -112,7 +112,17 @@ declare function isAlarm(trigger: Trigger): trigger is 'do-alarm';
 declare function instrumentPage<E = unknown, P extends string = any, D extends Record<string, unknown> = Record<string, unknown>>(handler: PagesFunction<E, P, D>, config: ConfigurationOption): PagesFunction<E, P, D>;
 declare function instrument<E, Q, C>(handler: ExportedHandler<E, Q, C>, config: ConfigurationOption): ExportedHandler<E, Q, C>;
 declare function instrumentDO(doClass: DOClass, config: ConfigurationOption): DOClass;
-declare function instrumentRpc<T extends new (...args: any[]) => WorkerEntrypoint>(rpcClass: T, config: ConfigurationOption): T;
+/**
+ * Instruments a WorkerEntrypoint class for RPC tracing
+ * @param entrypointClass The WorkerEntrypoint class to instrument
+ * @param config OpenTelemetry configuration
+ */
+declare function instrumentWorkersEntrypoint<T extends new (...args: any[]) => WorkerEntrypoint>(entrypointClass: T, config: ConfigurationOption): T;
+/**
+ * Instruments an RpcTarget class for RPC tracing
+ * @param targetClass The RpcTarget class to instrument
+ * @param config OpenTelemetry configuration
+ */
 declare function instrumentRpcTarget<T extends new (...args: any[]) => RpcTarget>(targetClass: T, config: ConfigurationOption): T;
 
 declare const __unwrappedFetch: typeof fetch;
@@ -196,4 +206,4 @@ declare class BatchTraceSpanProcessor implements SpanProcessor {
 
 declare function withNextSpan(attrs: Attributes): void;
 
-export { BatchTraceSpanProcessor, type ConfigurationOption, type DOConstructorTrigger, type ExporterConfig, type HandlerConfig, type InstrumentationOptions, type LocalTrace, MultiSpanExporter, MultiSpanExporterAsync, OTLPExporter, type OTLPExporterConfig, type ParentRatioSamplingConfig, type PostProcessorFn, type ResolveConfigFn, type ResolvedTraceConfig, type SamplingConfig, type ServiceConfig, SpanImpl, type TailSampleFn, type TraceConfig, type Trigger, __unwrappedFetch, createSampler, instrument, instrumentDO, instrumentPage, instrumentRpc, instrumentRpcTarget, isAlarm, isHeadSampled, isMessageBatch, isRequest, isRootErrorSpan, isSpanProcessorConfig, multiTailSampler, waitUntilTrace, withNextSpan };
+export { BatchTraceSpanProcessor, type ConfigurationOption, type DOConstructorTrigger, type ExporterConfig, type HandlerConfig, type InstrumentationOptions, type LocalTrace, MultiSpanExporter, MultiSpanExporterAsync, OTLPExporter, type OTLPExporterConfig, type ParentRatioSamplingConfig, type PostProcessorFn, type ResolveConfigFn, type ResolvedTraceConfig, type SamplingConfig, type ServiceConfig, SpanImpl, type TailSampleFn, type TraceConfig, type Trigger, __unwrappedFetch, createSampler, instrument, instrumentDO, instrumentPage, instrumentRpcTarget, instrumentWorkersEntrypoint, isAlarm, isHeadSampled, isMessageBatch, isRequest, isRootErrorSpan, isSpanProcessorConfig, multiTailSampler, waitUntilTrace, withNextSpan };

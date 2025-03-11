@@ -1671,7 +1671,7 @@ function instrumentRpcMethod(method, methodName, initialiser, instance) {
 async function executeRpcMethod(method, thisArg, args, methodName) {
   const tracer2 = trace9.getTracer("rpc");
   const attributes = {
-    [ATTR_RPC_SYSTEM]: "cloudflare_workers",
+    [ATTR_RPC_SYSTEM]: "cloudflare.workers",
     [ATTR_RPC_SERVICE]: thisArg.constructor.name,
     [ATTR_RPC_METHOD]: methodName,
     "rpc.arguments_count": args.length
@@ -1825,6 +1825,24 @@ function isRpcStub(obj) {
   } catch (e) {
     return false;
   }
+}
+
+// src/instrumentation/service.ts
+function instrumentServiceBinding(fetcher, envName) {
+  const fetcherHandler = {
+    get(target, prop) {
+      if (prop === "fetch") {
+        const fetcher2 = Reflect.get(target, prop);
+        const attrs = {
+          name: `Service Binding ${envName}`
+        };
+        return instrumentClientFetch(fetcher2, () => ({ includeTraceContext: true }), attrs);
+      } else {
+        return passthroughGet(target, prop);
+      }
+    }
+  };
+  return wrap(fetcher, fetcherHandler);
 }
 
 // src/instrumentation/d1.ts
@@ -2055,8 +2073,10 @@ var instrumentEnv = (env) => {
       if (!isProxyable(item)) {
         return item;
       }
-      if (isJSRPC(item)) {
+      if (isRpcStub(item)) {
         return instrumentRpcBinding(item, String(prop));
+      } else if (isJSRPC(item)) {
+        return instrumentServiceBinding(item, String(prop));
       } else if (isKVNamespace(item)) {
         return instrumentKV(item, String(prop));
       } else if (isQueue(item)) {
@@ -2602,9 +2622,9 @@ function instrumentDO(doClass, config) {
   const initialiser = createInitialiser(config);
   return instrumentDOClass(doClass, initialiser);
 }
-function instrumentRpc(rpcClass, config) {
+function instrumentWorkersEntrypoint(entrypointClass, config) {
   const initialiser = createInitialiser(config);
-  return instrumentRpcClass(rpcClass, initialiser);
+  return instrumentRpcClass(entrypointClass, initialiser);
 }
 function instrumentRpcTarget(targetClass, config) {
   const initialiser = createInitialiser(config);
@@ -2665,8 +2685,8 @@ export {
   instrument,
   instrumentDO,
   instrumentPage,
-  instrumentRpc,
   instrumentRpcTarget,
+  instrumentWorkersEntrypoint,
   isAlarm,
   isHeadSampled,
   isMessageBatch,
