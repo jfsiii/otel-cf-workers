@@ -2487,39 +2487,39 @@ async function executeEmailHandler(emailFn, [message, env, ctx]) {
 var import_api20 = require("@opentelemetry/api");
 var import_incubating3 = require("@opentelemetry/semantic-conventions/incubating");
 var cold_start4 = true;
-function executePageHandler(pagesFn, [request]) {
-  const spanContext = getParentContextFromRequest(request.request);
+function executePageHandler(pagesFn, [eventContext]) {
+  const spanContext = getParentContextFromRequest(eventContext.request);
   const tracer2 = import_api20.trace.getTracer("pagesHandler");
   const attributes = {
     [import_incubating3.ATTR_FAAS_TRIGGER]: "http",
     [import_incubating3.ATTR_FAAS_COLDSTART]: cold_start4,
-    [import_incubating3.ATTR_FAAS_INVOCATION_ID]: request.request.headers.get("cf-ray") ?? void 0
+    [import_incubating3.ATTR_FAAS_INVOCATION_ID]: eventContext.request.headers.get("cf-ray") ?? void 0
   };
   cold_start4 = false;
-  Object.assign(attributes, gatherRequestAttributes(request.request));
-  Object.assign(attributes, gatherIncomingCfAttributes(request.request));
-  Object.assign(attributes, versionAttributes(request.env));
+  Object.assign(attributes, gatherRequestAttributes(eventContext.request));
+  Object.assign(attributes, gatherIncomingCfAttributes(eventContext.request));
+  Object.assign(attributes, versionAttributes(eventContext.env));
   const options = {
     attributes,
     kind: import_api20.SpanKind.SERVER
   };
   const promise = tracer2.startActiveSpan(
-    `fetchHandler ${request.request.method} ${request.functionPath}`,
+    `fetchHandler ${eventContext.request.method} ${eventContext.functionPath}`,
     options,
     spanContext,
     async (span) => {
       const readable = span;
       try {
-        const response = await pagesFn(request);
+        const response = await pagesFn(eventContext);
         span.setAttributes(gatherResponseAttributes(response));
         if (readable.attributes["http.route"]) {
-          span.updateName(`fetchHandler ${request.request.method} ${readable.attributes["http.route"]}`);
+          span.updateName(`fetchHandler ${eventContext.request.method} ${readable.attributes["http.route"]}`);
         }
         span.end();
         return response;
       } catch (error) {
         if (readable.attributes["http.route"]) {
-          span.updateName(`fetchHandler ${request.request.method} ${readable.attributes["http.route"]}`);
+          span.updateName(`fetchHandler ${eventContext.request.method} ${readable.attributes["http.route"]}`);
         }
         span.recordException(error);
         span.setStatus({ code: import_api20.SpanStatusCode.ERROR });
@@ -2534,7 +2534,8 @@ function createPageHandler(pageFn, initialiser) {
   const pagesHandler = {
     apply: async (target, _thisArg, argArray) => {
       const [orig_ctx] = argArray;
-      const config = initialiser(orig_ctx.env, orig_ctx.request);
+      const env = instrumentEnv(orig_ctx.env);
+      const config = initialiser(env, orig_ctx.request);
       const { ctx, tracker } = proxyExecutionContext(orig_ctx);
       const context3 = setConfig(config);
       try {
