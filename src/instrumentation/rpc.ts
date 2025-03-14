@@ -8,12 +8,15 @@ import { Initialiser, setConfig } from '../config.js'
 import { exportSpans } from './common.js'
 import { WorkerEntrypoint, RpcTarget } from 'cloudflare:workers'
 
+export type WorkerEntrypointConstructor = new (...args: any[]) => WorkerEntrypoint
+export type RpcTargetConstructor = new (...args: any[]) => RpcTarget
+
 /**
  * Instruments a class that extends WorkerEntrypoint, tracing all method calls
  * made via RPC.
  */
-export function instrumentRpcClass<T extends new (...args: any[]) => WorkerEntrypoint>(
-	rpcClass: T,
+export function instrumentWorkerEntrypointClass<T extends WorkerEntrypointConstructor>(
+	entrypointClass: T,
 	initialiser: Initialiser,
 ): T {
 	const classHandler: ProxyHandler<T> = {
@@ -22,18 +25,18 @@ export function instrumentRpcClass<T extends new (...args: any[]) => WorkerEntry
 			const instance = new target(...args)
 
 			// Create a proxy for the instance
-			return instrumentRpcInstance(instance, initialiser)
+			return instrumentWorkerEntrypointInstance(instance, initialiser)
 		},
 	}
 
-	return wrap(rpcClass, classHandler)
+	return wrap(entrypointClass, classHandler)
 }
 
 /**
  * Instruments an instance of a WorkerEntrypoint class, wrapping its methods
  * to trace RPC calls.
  */
-function instrumentRpcInstance(instance: InstanceType<typeof WorkerEntrypoint>, initialiser: Initialiser) {
+function instrumentWorkerEntrypointInstance(instance: InstanceType<typeof WorkerEntrypoint>, initialiser: Initialiser) {
 	const instanceHandler: ProxyHandler<typeof instance> = {
 		get(target, prop, receiver) {
 			// Get the original property or method
@@ -69,13 +72,10 @@ function instrumentRpcMethod(method: Function, methodName: string, initialiser: 
 	const methodHandler: ProxyHandler<Function> = {
 		apply: async function (target, thisArg, args) {
 			// Extract environment from the instance if available
-			const env = instance && instance.env ? instrumentEnv(instance.env as Record<string, unknown>) : {}
+			const env = instance && instance.env ? instrumentEnv(instance.env) : {}
 
 			// Create config and context for this trace
-			const config = initialiser(env as Record<string, unknown>, {
-				method: methodName,
-				args: args,
-			})
+			const config = initialiser(env, { methodName })
 			const context = setConfig(config)
 
 			// Execute the method with tracing
@@ -119,7 +119,7 @@ async function executeRpcMethod(method: Function, thisArg: any, args: any[], met
 			const result = await Reflect.apply(method, unwrap(thisArg), args)
 
 			// Add result information to the span
-			span.setAttribute('rpc.success', true)
+			span.setStatus({ code: SpanStatusCode.OK })
 			span.setAttribute('rpc.has_result', result !== undefined && result !== null)
 
 			// Complete the span
@@ -128,7 +128,6 @@ async function executeRpcMethod(method: Function, thisArg: any, args: any[], met
 		} catch (error) {
 			// Record errors
 			span.recordException(error as Exception)
-			span.setAttribute('rpc.success', false)
 			span.setStatus({ code: SpanStatusCode.ERROR })
 			span.end()
 			throw error
@@ -139,10 +138,7 @@ async function executeRpcMethod(method: Function, thisArg: any, args: any[], met
 /**
  * Instruments a class that extends RpcTarget for cross-service tracing
  */
-export function instrumentRpcTargetClass<T extends new (...args: any[]) => RpcTarget>(
-	targetClass: T,
-	initialiser: Initialiser,
-): T {
+export function instrumentRpcTargetClass<T extends RpcTargetConstructor>(targetClass: T, initialiser: Initialiser): T {
 	const classHandler: ProxyHandler<T> = {
 		construct(target, args) {
 			const instance = new target(...args)
@@ -172,7 +168,7 @@ function instrumentRpcTargetInstance(instance: InstanceType<typeof RpcTarget>, i
 			}
 
 			// Wrap the method with tracing
-			return instrumentRpcTargetMethod(value, String(prop), initialiser, target)
+			return instrumentRpcTargetMethod(value, String(prop), initialiser)
 		},
 	}
 
@@ -182,16 +178,13 @@ function instrumentRpcTargetInstance(instance: InstanceType<typeof RpcTarget>, i
 /**
  * Instruments an individual method on an RpcTarget instance
  */
-function instrumentRpcTargetMethod(method: Function, methodName: string, initialiser: Initialiser, instance: any) {
+function instrumentRpcTargetMethod(method: Function, methodName: string, initialiser: Initialiser) {
 	const methodHandler: ProxyHandler<Function> = {
 		apply: async function (target, thisArg, args) {
 			// For RpcTarget we might not have direct access to env
 			// So we'll create a minimal config
 			const env = {}
-			const config = initialiser(env as Record<string, unknown>, {
-				method: methodName,
-				args: args,
-			})
+			const config = initialiser(env, { methodName })
 			const context = setConfig(config)
 
 			try {
@@ -225,12 +218,11 @@ async function executeRpcTargetMethod(method: Function, thisArg: any, args: any[
 	return tracer.startActiveSpan(`RpcTarget ${methodName}`, options, async (span) => {
 		try {
 			const result = await Reflect.apply(method, unwrap(thisArg), args)
-			span.setAttribute('rpc.target.success', true)
+			span.setStatus({ code: SpanStatusCode.OK })
 			span.end()
 			return result
 		} catch (error) {
 			span.recordException(error as Exception)
-			span.setAttribute('rpc.target.success', false)
 			span.setStatus({ code: SpanStatusCode.ERROR })
 			span.end()
 			throw error
@@ -290,13 +282,12 @@ function instrumentRpcBindingMethod(method: Function, bindingName: string, metho
 					const result = await Reflect.apply(target, unwrap(thisArg), args)
 
 					// Add result info to span
-					span.setAttribute('rpc.client.success', true)
+					span.setStatus({ code: SpanStatusCode.OK })
 					span.end()
 
 					return result
 				} catch (error) {
 					span.recordException(error as Exception)
-					span.setAttribute('rpc.client.success', false)
 					span.setStatus({ code: SpanStatusCode.ERROR })
 					span.end()
 					throw error

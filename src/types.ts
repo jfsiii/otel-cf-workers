@@ -73,10 +73,15 @@ export interface DOConstructorTrigger {
 	name?: string
 }
 
+export interface RpcTrigger {
+	methodName: string
+}
+
 export type Trigger =
 	| Request
 	| MessageBatch
 	| ScheduledController
 	| DOConstructorTrigger
+	| RpcTrigger
 	| 'do-alarm'
 	| ForwardableEmailMessage

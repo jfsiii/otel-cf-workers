@@ -9,13 +9,17 @@ import { createFetchHandler, instrumentGlobalFetch } from './instrumentation/fet
 import { instrumentGlobalCache } from './instrumentation/cache.js'
 import { createQueueHandler } from './instrumentation/queue.js'
 import { DOClass, instrumentDOClass } from './instrumentation/do.js'
-import { instrumentRpcTargetClass, instrumentRpcClass } from './instrumentation/rpc.js'
+import {
+	instrumentRpcTargetClass,
+	instrumentWorkerEntrypointClass,
+	type WorkerEntrypointConstructor,
+	type RpcTargetConstructor,
+} from './instrumentation/rpc.js'
 import { createScheduledHandler } from './instrumentation/scheduled.js'
 //@ts-ignore
 import * as versions from '../versions.json'
 import { createEmailHandler } from './instrumentation/email.js'
 import { createPageHandler } from './instrumentation/page.js'
-import { WorkerEntrypoint, RpcTarget } from 'cloudflare:workers'
 
 type FetchHandler = ExportedHandlerFetchHandler<unknown, unknown>
 type ScheduledHandler = ExportedHandlerScheduledHandler<unknown>
@@ -143,12 +147,12 @@ export function instrumentDO(doClass: DOClass, config: ConfigurationOption) {
  * @param entrypointClass The WorkerEntrypoint class to instrument
  * @param config OpenTelemetry configuration
  */
-export function instrumentWorkersEntrypoint<T extends new (...args: any[]) => WorkerEntrypoint>(
+export function instrumentWorkerEntrypoint<T extends WorkerEntrypointConstructor>(
 	entrypointClass: T,
 	config: ConfigurationOption,
 ) {
 	const initialiser = createInitialiser(config)
-	return instrumentRpcClass(entrypointClass, initialiser)
+	return instrumentWorkerEntrypointClass(entrypointClass, initialiser)
 }
 
 /**
@@ -156,10 +160,7 @@ export function instrumentWorkersEntrypoint<T extends new (...args: any[]) => Wo
  * @param targetClass The RpcTarget class to instrument
  * @param config OpenTelemetry configuration
  */
-export function instrumentRpcTarget<T extends new (...args: any[]) => RpcTarget>(
-	targetClass: T,
-	config: ConfigurationOption,
-) {
+export function instrumentRpcTarget<T extends RpcTargetConstructor>(targetClass: T, config: ConfigurationOption) {
 	const initialiser = createInitialiser(config)
 	return instrumentRpcTargetClass(targetClass, initialiser)
 }

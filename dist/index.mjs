@@ -1623,16 +1623,16 @@ function instrumentQueueSender(queue, name) {
 // src/instrumentation/rpc.ts
 import { context as api_context4, trace as trace9, SpanKind as SpanKind7, SpanStatusCode as SpanStatusCode4 } from "@opentelemetry/api";
 import { ATTR_RPC_METHOD, ATTR_RPC_SERVICE, ATTR_RPC_SYSTEM } from "@opentelemetry/semantic-conventions/incubating";
-function instrumentRpcClass(rpcClass, initialiser) {
+function instrumentWorkerEntrypointClass(entrypointClass, initialiser) {
   const classHandler = {
     construct(target, args) {
       const instance = new target(...args);
-      return instrumentRpcInstance(instance, initialiser);
+      return instrumentWorkerEntrypointInstance(instance, initialiser);
     }
   };
-  return wrap(rpcClass, classHandler);
+  return wrap(entrypointClass, classHandler);
 }
-function instrumentRpcInstance(instance, initialiser) {
+function instrumentWorkerEntrypointInstance(instance, initialiser) {
   const instanceHandler = {
     get(target, prop, receiver) {
       const value = Reflect.get(target, prop, receiver);
@@ -1652,10 +1652,7 @@ function instrumentRpcMethod(method, methodName, initialiser, instance) {
   const methodHandler = {
     apply: async function(target, thisArg, args) {
       const env = instance && instance.env ? instrumentEnv(instance.env) : {};
-      const config = initialiser(env, {
-        method: methodName,
-        args
-      });
+      const config = initialiser(env, { methodName });
       const context3 = setConfig(config);
       try {
         return await api_context4.with(context3, executeRpcMethod, void 0, target, thisArg, args, methodName);
@@ -1683,13 +1680,12 @@ async function executeRpcMethod(method, thisArg, args, methodName) {
   return tracer2.startActiveSpan(`RPC ${methodName}`, options, async (span) => {
     try {
       const result = await Reflect.apply(method, unwrap(thisArg), args);
-      span.setAttribute("rpc.success", true);
+      span.setStatus({ code: SpanStatusCode4.OK });
       span.setAttribute("rpc.has_result", result !== void 0 && result !== null);
       span.end();
       return result;
     } catch (error) {
       span.recordException(error);
-      span.setAttribute("rpc.success", false);
       span.setStatus({ code: SpanStatusCode4.ERROR });
       span.end();
       throw error;
@@ -1712,19 +1708,16 @@ function instrumentRpcTargetInstance(instance, initialiser) {
       if (prop === "constructor" || prop === Symbol.dispose || prop === Symbol.asyncDispose || typeof value !== "function") {
         return value;
       }
-      return instrumentRpcTargetMethod(value, String(prop), initialiser, target);
+      return instrumentRpcTargetMethod(value, String(prop), initialiser);
     }
   };
   return wrap(instance, instanceHandler);
 }
-function instrumentRpcTargetMethod(method, methodName, initialiser, instance) {
+function instrumentRpcTargetMethod(method, methodName, initialiser) {
   const methodHandler = {
     apply: async function(target, thisArg, args) {
       const env = {};
-      const config = initialiser(env, {
-        method: methodName,
-        args
-      });
+      const config = initialiser(env, { methodName });
       const context3 = setConfig(config);
       try {
         return await api_context4.with(context3, executeRpcTargetMethod, void 0, target, thisArg, args, methodName);
@@ -1749,12 +1742,11 @@ async function executeRpcTargetMethod(method, thisArg, args, methodName) {
   return tracer2.startActiveSpan(`RpcTarget ${methodName}`, options, async (span) => {
     try {
       const result = await Reflect.apply(method, unwrap(thisArg), args);
-      span.setAttribute("rpc.target.success", true);
+      span.setStatus({ code: SpanStatusCode4.OK });
       span.end();
       return result;
     } catch (error) {
       span.recordException(error);
-      span.setAttribute("rpc.target.success", false);
       span.setStatus({ code: SpanStatusCode4.ERROR });
       span.end();
       throw error;
@@ -1794,12 +1786,11 @@ function instrumentRpcBindingMethod(method, bindingName, methodName) {
       return tracer2.startActiveSpan(`RPC ${bindingName}.${methodName}`, options, async (span) => {
         try {
           const result = await Reflect.apply(target, unwrap(thisArg), args);
-          span.setAttribute("rpc.client.success", true);
+          span.setStatus({ code: SpanStatusCode4.OK });
           span.end();
           return result;
         } catch (error) {
           span.recordException(error);
-          span.setAttribute("rpc.client.success", false);
           span.setStatus({ code: SpanStatusCode4.ERROR });
           span.end();
           throw error;
@@ -2623,9 +2614,9 @@ function instrumentDO(doClass, config) {
   const initialiser = createInitialiser(config);
   return instrumentDOClass(doClass, initialiser);
 }
-function instrumentWorkersEntrypoint(entrypointClass, config) {
+function instrumentWorkerEntrypoint(entrypointClass, config) {
   const initialiser = createInitialiser(config);
-  return instrumentRpcClass(entrypointClass, initialiser);
+  return instrumentWorkerEntrypointClass(entrypointClass, initialiser);
 }
 function instrumentRpcTarget(targetClass, config) {
   const initialiser = createInitialiser(config);
@@ -2687,7 +2678,7 @@ export {
   instrumentDO,
   instrumentPage,
   instrumentRpcTarget,
-  instrumentWorkersEntrypoint,
+  instrumentWorkerEntrypoint,
   isAlarm,
   isHeadSampled,
   isMessageBatch,
